@@ -775,6 +775,31 @@ public class HyperLogLogCollectorTest
   }
 
   @Test
+  public void testCompareShouldNotBreakOnAToughCase() throws Exception {
+    Random rand = new Random(0);
+    HyperUniquesAggregatorFactory factory = new HyperUniquesAggregatorFactory("foo", "bar");
+    Comparator comparator = factory.getComparator();
+    for (int i = 1; i < 10000; ++i) {
+      HyperLogLogCollector collector1 = HyperLogLogCollector.makeLatestCollector();
+      int j = rand.nextInt(9000) + 5000;
+      for (int l = 0; l < j; ++l) {
+        collector1.add(fn.hashLong(rand.nextLong()).asBytes());
+      }
+
+      HyperLogLogCollector collector2 = HyperLogLogCollector.makeLatestCollector();
+      int k = rand.nextInt(9000) + 5000;
+      for (int l = 0; l < k; ++l) {
+        collector2.add(fn.hashLong(rand.nextLong()).asBytes());
+      }
+
+      Assert.assertEquals(
+              Double.compare(collector1.estimateCardinality(), collector2.estimateCardinality()),
+              comparator.compare(collector1, collector2)
+      );
+    }
+  }
+
+  @Test
   public void testMaxOverflow() {
     HyperLogLogCollector collector = HyperLogLogCollector.makeLatestCollector();
     collector.add((short)23, (byte)16);
