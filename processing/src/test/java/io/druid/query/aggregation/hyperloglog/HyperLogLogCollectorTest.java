@@ -776,7 +776,7 @@ public class HyperLogLogCollectorTest
     }
   }
 
-  @Test()
+  @Test
   public void testCompareToShouldBehaveConsistentlyWithEstimatedCardinalitiesEvenInToughCases() throws Exception {
     // given
     Random rand = new Random(0);
