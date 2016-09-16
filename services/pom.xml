@@ -56,6 +56,23 @@
             <artifactId>airline</artifactId>
         </dependency>
 
+        <!-- DreamLab customizations -->
+        <dependency>
+            <groupId>io.druid.extensions</groupId>
+            <artifactId>druid-kafka-eight</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.druid.extensions</groupId>
+            <artifactId>mysql-metadata-storage</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.druid.extensions</groupId>
+            <artifactId>druid-hdfs-storage</artifactId>
+            <version>${project.parent.version}</version>
+        </dependency>
+
         <!-- Test Dependencies -->
         <dependency>
             <groupId>junit</groupId>
