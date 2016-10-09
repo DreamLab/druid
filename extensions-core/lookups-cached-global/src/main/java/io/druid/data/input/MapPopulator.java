@@ -56,25 +56,24 @@ public class MapPopulator<K, V>
    */
   public long populate(final ByteSource source, final Map<K, V> map) throws IOException
   {
-    return source.asCharSource(Charsets.UTF_8).readLines(
-        new LineProcessor<Long>()
-        {
-          private long count = 0L;
+    final LineProcessor<Long> lineProcessor = new LineProcessor<Long>() {
+      private long count = 0L;
 
-          @Override
-          public boolean processLine(String line) throws IOException
-          {
-            map.putAll(parser.parse(line));
-            ++count;
-            return true;
-          }
+      @Override
+      public boolean processLine(String line) throws IOException {
+        map.putAll(parser.parse(line));
+        ++count;
+        return true;
+      }
 
-          @Override
-          public Long getResult()
-          {
-            return count;
-          }
-        }
-    );
+      @Override
+      public Long getResult() {
+        return count;
+      }
+    };
+    for (String line : source.asCharSource(Charsets.UTF_8).readLines()) {
+      lineProcessor.processLine(line);
+    }
+    return lineProcessor.getResult();
   }
 }

@@ -217,31 +217,30 @@ public class DruidJsonValidator extends GuiceRunnable
   private Void readData(final StringInputRowParser parser, final CharSource source)
       throws IOException
   {
-    return source.readLines(
-        new LineProcessor<Void>()
-        {
-          private final StringBuilder builder = new StringBuilder();
+    final LineProcessor<Void> lineProcessor = new LineProcessor<Void>() {
+      private final StringBuilder builder = new StringBuilder();
 
-          @Override
-          public boolean processLine(String line) throws IOException
-          {
-            InputRow parsed = parser.parse(line);
-            builder.append(parsed.getTimestamp());
-            for (String dimension : parsed.getDimensions()) {
-              builder.append('\t');
-              builder.append(parsed.getRaw(dimension));
-            }
-            logWriter.write(builder.toString());
-            builder.setLength(0);
-            return true;
-          }
-
-          @Override
-          public Void getResult()
-          {
-            return null;
-          }
+      @Override
+      public boolean processLine(String line) throws IOException {
+        InputRow parsed = parser.parse(line);
+        builder.append(parsed.getTimestamp());
+        for (String dimension : parsed.getDimensions()) {
+          builder.append('\t');
+          builder.append(parsed.getRaw(dimension));
         }
-    );
+        logWriter.write(builder.toString());
+        builder.setLength(0);
+        return true;
+      }
+
+      @Override
+      public Void getResult() {
+        return null;
+      }
+    };
+    for (String line : source.readLines()) {
+      lineProcessor.processLine(line);
+    }
+    return lineProcessor.getResult();
   }
 }

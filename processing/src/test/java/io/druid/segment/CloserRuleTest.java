@@ -19,7 +19,6 @@
 
 package io.druid.segment;
 
-import com.google.common.util.concurrent.Runnables;
 import org.junit.Assert;
 import org.junit.Rule;
 import org.junit.Test;
@@ -37,6 +36,12 @@ import java.util.concurrent.atomic.AtomicLong;
 
 public class CloserRuleTest
 {
+  private static final Runnable EMPTY_RUNNABLE =
+          new Runnable() {
+            @Override
+            public void run() {}
+          };
+
   @Rule
   public final ExpectedException expectedException = ExpectedException.none();
 
@@ -55,7 +60,7 @@ public class CloserRuleTest
           }
         }
     );
-    run(closer, Runnables.doNothing());
+    run(closer, EMPTY_RUNNABLE);
     Assert.assertTrue(closed.get());
   }
 
@@ -170,7 +175,7 @@ public class CloserRuleTest
     );
     Throwable ex = null;
     try {
-      run(closer, Runnables.doNothing());
+      run(closer, EMPTY_RUNNABLE);
     }
     catch (Throwable throwable) {
       ex = throwable;
@@ -194,7 +199,7 @@ public class CloserRuleTest
           }
         }
     );
-    run(closer, Runnables.doNothing());
+    run(closer, EMPTY_RUNNABLE);
   }
 
   @Test
@@ -232,7 +237,7 @@ public class CloserRuleTest
           }
         }
     );
-    run(closer, Runnables.doNothing());
+    run(closer, EMPTY_RUNNABLE);
   }
 
   @Test
@@ -266,7 +271,7 @@ public class CloserRuleTest
     }
     Throwable ex = null;
     try {
-      run(closer, Runnables.doNothing());
+      run(closer, EMPTY_RUNNABLE);
     }
     catch (Throwable throwable) {
       ex = throwable;
