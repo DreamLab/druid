@@ -217,32 +217,31 @@ public class TestIndex
   ) throws IOException
   {
     final AtomicLong startTime = new AtomicLong();
-    int lineCount = source.readLines(
-        new LineProcessor<Integer>()
-        {
-          boolean runOnce = false;
-          int lineCount = 0;
+    final LineProcessor<Integer> lineProcessor = new LineProcessor<Integer>() {
+      boolean runOnce = false;
+      int lineCount = 0;
 
-          @Override
-          public boolean processLine(String line) throws IOException
-          {
-            if (!runOnce) {
-              startTime.set(System.currentTimeMillis());
-              runOnce = true;
-            }
-            retVal.add(parser.parse(line));
-
-            ++lineCount;
-            return true;
-          }
-
-          @Override
-          public Integer getResult()
-          {
-            return lineCount;
-          }
+      @Override
+      public boolean processLine(String line) throws IOException {
+        if (!runOnce) {
+          startTime.set(System.currentTimeMillis());
+          runOnce = true;
         }
-    );
+        retVal.add(parser.parse(line));
+
+        ++lineCount;
+        return true;
+      }
+
+      @Override
+      public Integer getResult() {
+        return lineCount;
+      }
+    };
+    for (String line : source.readLines()) {
+      lineProcessor.processLine(line);
+    }
+    int lineCount = lineProcessor.getResult();
 
     log.info("Loaded %,d lines in %,d millis.", lineCount, System.currentTimeMillis() - startTime.get());
 
