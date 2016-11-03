@@ -21,8 +21,8 @@ package io.druid.query.aggregation.histogram.hdr;
 
 import com.google.common.primitives.Longs;
 import io.druid.query.aggregation.Aggregator;
-import io.druid.query.aggregation.histogram.ApproximateHistogram;
 import io.druid.segment.FloatColumnSelector;
+import org.HdrHistogram.DoubleHistogram;
 
 import java.util.Comparator;
 
@@ -31,48 +31,44 @@ public class HdrHistogramAggregator implements Aggregator
   public static final Comparator COMPARATOR = new Comparator()
   {
     @Override
-    public int compare(Object o, Object o1)
+    public int compare(Object lhs, Object rhs)
     {
-      return Longs.compare(((ApproximateHistogram) o).count(), ((ApproximateHistogram) o1).count());
+      return Longs.compare(((DoubleHistogram) lhs).getTotalCount(), ((DoubleHistogram) rhs).getTotalCount());
     }
   };
 
   static Object combineHistograms(Object lhs, Object rhs)
   {
-    return ((ApproximateHistogram) lhs).foldFast((ApproximateHistogram) rhs);
+    final DoubleHistogram lhsHistogram = (DoubleHistogram) lhs;
+    lhsHistogram.add((DoubleHistogram) rhs);
+    return lhsHistogram;
   }
 
   private final FloatColumnSelector selector;
-  private final int resolution;
-  private final float lowerLimit;
-  private final float upperLimit;
+  private final long highestToLowestValueRatio;
+  private final int numberOfSignificantValueDigits;
 
-  private ApproximateHistogram histogram;
+  private DoubleHistogram histogram;
 
   public HdrHistogramAggregator(
-      FloatColumnSelector selector,
-      int resolution,
-      float lowerLimit,
-      float upperLimit
-  )
+          long highestToLowestValueRatio, int numberOfSignificantValueDigits, FloatColumnSelector selector)
   {
+    this.highestToLowestValueRatio = highestToLowestValueRatio;
+    this.numberOfSignificantValueDigits = numberOfSignificantValueDigits;
     this.selector = selector;
-    this.resolution = resolution;
-    this.lowerLimit = lowerLimit;
-    this.upperLimit = upperLimit;
-    this.histogram = new ApproximateHistogram(resolution, lowerLimit, upperLimit);
+    this.histogram = new DoubleHistogram(this.highestToLowestValueRatio, this.numberOfSignificantValueDigits);
   }
 
   @Override
   public void aggregate()
   {
-    histogram.offer(selector.get());
+    histogram.recordValue(selector.get());
   }
 
   @Override
   public void reset()
   {
-    this.histogram = new ApproximateHistogram(resolution, lowerLimit, upperLimit);
+    this.histogram = new DoubleHistogram(highestToLowestValueRatio, numberOfSignificantValueDigits);
   }
 
   @Override
@@ -84,13 +80,13 @@ public class HdrHistogramAggregator implements Aggregator
   @Override
   public float getFloat()
   {
-    throw new UnsupportedOperationException("ApproximateHistogramAggregator does not support getFloat()");
+    throw new UnsupportedOperationException("HdrHistogramAggregator does not support getFloat()");
   }
 
   @Override
   public long getLong()
   {
-    throw new UnsupportedOperationException("ApproximateHistogramAggregator does not support getLong()");
+    throw new UnsupportedOperationException("HdrHistogramAggregator does not support getLong()");
   }
 
   @Override

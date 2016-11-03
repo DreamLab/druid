@@ -85,7 +85,7 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
   public Aggregator factorize(ColumnSelectorFactory metricFactory)
   {
     return new HdrHistogramAggregator(
-        metricFactory.makeFloatColumnSelector(fieldName),
+            highestToLowestValueRatio, numberOfSignificantValueDigits, metricFactory.makeFloatColumnSelector(fieldName),
         resolution,
         lowerLimit,
         upperLimit
