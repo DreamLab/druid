@@ -212,7 +212,7 @@ public class ApproximateHistogramTest
     Assert.assertEquals(h3, h4Fast);
   }
 
-    //@Test
+    @Test
   public void testFoldSpeed()
   {
     final int combinedHistSize = 200;
@@ -253,6 +253,14 @@ public class ApproximateHistogramTest
     }
 
     System.out.println(String.format("Average folds per second : %f", (double) count / (double) tFold * 1e9));
+    /**
+     *  Without offer loop:
+     *   fold: 140000 - 150000 folds per second
+     *   foldFast: 800000 - 900000 folds per second
+     * With offer loop:
+     *   fold: 120000 - 137000
+     *   foldFast: 750000 - 850000
+     */
   }
 
   @Test

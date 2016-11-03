@@ -38,6 +38,12 @@
             <scope>provided</scope>
         </dependency>
 
+        <dependency>
+            <groupId>org.hdrhistogram</groupId>
+            <artifactId>HdrHistogram</artifactId>
+            <version>2.1.9</version>
+        </dependency>
+
         <!-- Tests -->
         <dependency>
             <groupId>io.druid</groupId>
