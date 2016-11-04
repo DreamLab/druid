@@ -20,62 +20,52 @@
 package io.druid.query.aggregation.histogram.hdr;
 
 import io.druid.query.aggregation.BufferAggregator;
-import io.druid.query.aggregation.histogram.ApproximateHistogram;
 import io.druid.segment.ObjectColumnSelector;
+import org.HdrHistogram.DoubleHistogram;
 
 import java.nio.ByteBuffer;
+import java.util.zip.DataFormatException;
+import java.util.zip.Deflater;
 
 public class HdrHistogramFoldingBufferAggregator implements BufferAggregator
 {
-  private final ObjectColumnSelector<ApproximateHistogram> selector;
-  private final int resolution;
-  private final float upperLimit;
-  private final float lowerLimit;
-
-  private float[] tmpBufferP;
-  private long[] tmpBufferB;
+  private final ObjectColumnSelector<DoubleHistogram> selector;
+  private final long highestToLowestValueRatio;
+  private final int numberOfSignificantValueDigits;
 
   public HdrHistogramFoldingBufferAggregator(
-      ObjectColumnSelector<ApproximateHistogram> selector,
-      int resolution,
-      float lowerLimit,
-      float upperLimit
-  )
+          ObjectColumnSelector<DoubleHistogram> selector,
+          long highestToLowestValueRatio, int numberOfSignificantValueDigits)
   {
     this.selector = selector;
-    this.resolution = resolution;
-    this.lowerLimit = lowerLimit;
-    this.upperLimit = upperLimit;
-
-    tmpBufferP = new float[resolution];
-    tmpBufferB = new long[resolution];
+    this.highestToLowestValueRatio = highestToLowestValueRatio;
+    this.numberOfSignificantValueDigits = numberOfSignificantValueDigits;
   }
 
   @Override
   public void init(ByteBuffer buf, int position)
   {
-    ApproximateHistogram h = new ApproximateHistogram(resolution, lowerLimit, upperLimit);
-
-    ByteBuffer mutationBuffer = buf.duplicate();
+    final ByteBuffer mutationBuffer = buf.duplicate();
     mutationBuffer.position(position);
-    // use dense storage for aggregation
-    h.toBytesDense(mutationBuffer);
+    final DoubleHistogram initialHistogram = new DoubleHistogram(highestToLowestValueRatio, numberOfSignificantValueDigits);
+    initialHistogram.encodeIntoCompressedByteBuffer(mutationBuffer, Deflater.BEST_SPEED);
   }
 
   @Override
   public void aggregate(ByteBuffer buf, int position)
   {
-    ByteBuffer mutationBuffer = buf.duplicate();
+    final ByteBuffer mutationBuffer = buf.duplicate();
     mutationBuffer.position(position);
 
-    ApproximateHistogram h0 = ApproximateHistogram.fromBytesDense(mutationBuffer);
-    h0.setLowerLimit(lowerLimit);
-    h0.setUpperLimit(upperLimit);
-    ApproximateHistogram hNext = selector.get();
-    h0.foldFast(hNext, tmpBufferP, tmpBufferB);
-
-    mutationBuffer.position(position);
-    h0.toBytesDense(mutationBuffer);
+    final DoubleHistogram doubleHistogram;
+    try {
+      doubleHistogram = DoubleHistogram.decodeFromCompressedByteBuffer(buf, Long.MAX_VALUE);
+      doubleHistogram.add(selector.get());
+      mutationBuffer.position(position);
+      doubleHistogram.encodeIntoCompressedByteBuffer(buf, Deflater.BEST_SPEED);
+    } catch (DataFormatException e) {
+      e.printStackTrace();
+    }
   }
 
   @Override
@@ -83,19 +73,26 @@ public class HdrHistogramFoldingBufferAggregator implements BufferAggregator
   {
     ByteBuffer mutationBuffer = buf.asReadOnlyBuffer();
     mutationBuffer.position(position);
-    return ApproximateHistogram.fromBytesDense(mutationBuffer);
+    final DoubleHistogram doubleHistogram;
+    try {
+      doubleHistogram = DoubleHistogram.decodeFromCompressedByteBuffer(buf, Long.MAX_VALUE);
+      return doubleHistogram;
+    } catch (DataFormatException e) {
+      e.printStackTrace();
+      return null;
+    }
   }
 
   @Override
   public float getFloat(ByteBuffer buf, int position)
   {
-    throw new UnsupportedOperationException("ApproximateHistogramFoldingBufferAggregator does not support getFloat()");
+    throw new UnsupportedOperationException("HdrHistogramFoldingBufferAggregator does not support getFloat()");
   }
 
   @Override
   public long getLong(ByteBuffer buf, int position)
   {
-    throw new UnsupportedOperationException("ApproximateHistogramFoldingBufferAggregator does not support getLong()");
+    throw new UnsupportedOperationException("HdrHistogramFoldingBufferAggregator does not support getLong()");
   }
 
   @Override

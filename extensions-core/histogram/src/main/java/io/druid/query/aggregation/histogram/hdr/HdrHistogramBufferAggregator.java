@@ -20,45 +20,34 @@
 package io.druid.query.aggregation.histogram.hdr;
 
 import io.druid.query.aggregation.BufferAggregator;
-import io.druid.query.aggregation.histogram.ApproximateHistogram;
 import io.druid.segment.FloatColumnSelector;
+import org.HdrHistogram.DoubleHistogram;
 
 import java.nio.ByteBuffer;
+import java.util.zip.DataFormatException;
+import java.util.zip.Deflater;
 
 public class HdrHistogramBufferAggregator implements BufferAggregator
 {
   private final FloatColumnSelector selector;
-  private final int resolution;
-  private final float lowerLimit;
-  private final float upperLimit;
+  private final long highestToLowestValueRatio;
+  private final int numberOfSignificantValueDigits;
 
-  public HdrHistogramBufferAggregator(FloatColumnSelector selector, int resolution, float lowerLimit, float upperLimit)
+  public HdrHistogramBufferAggregator(long highestToLowestValueRatio, int numberOfSignificantValueDigits,
+                                      FloatColumnSelector selector)
   {
     this.selector = selector;
-    this.resolution = resolution;
-    this.lowerLimit = lowerLimit;
-    this.upperLimit = upperLimit;
+    this.highestToLowestValueRatio = highestToLowestValueRatio;
+    this.numberOfSignificantValueDigits = numberOfSignificantValueDigits;
   }
 
   @Override
   public void init(ByteBuffer buf, int position)
   {
-    ByteBuffer mutationBuffer = buf.duplicate();
+    final ByteBuffer mutationBuffer = buf.duplicate();
     mutationBuffer.position(position);
-
-    mutationBuffer.putInt(resolution);
-    mutationBuffer.putInt(0); //initial binCount
-    for (int i = 0; i < resolution; ++i) {
-      mutationBuffer.putFloat(0f);
-    }
-    for (int i = 0; i < resolution; ++i) {
-      mutationBuffer.putLong(0L);
-    }
-
-    // min
-    mutationBuffer.putFloat(Float.POSITIVE_INFINITY);
-    // max
-    mutationBuffer.putFloat(Float.NEGATIVE_INFINITY);
+    final DoubleHistogram initialHistogram = new DoubleHistogram(highestToLowestValueRatio, numberOfSignificantValueDigits);
+    initialHistogram.encodeIntoCompressedByteBuffer(mutationBuffer, Deflater.BEST_SPEED);
   }
 
   @Override
@@ -67,11 +56,15 @@ public class HdrHistogramBufferAggregator implements BufferAggregator
     ByteBuffer mutationBuffer = buf.duplicate();
     mutationBuffer.position(position);
 
-    ApproximateHistogram h0 = ApproximateHistogram.fromBytesDense(mutationBuffer);
-    h0.offer(selector.get());
-
-    mutationBuffer.position(position);
-    h0.toBytesDense(mutationBuffer);
+    final DoubleHistogram doubleHistogram;
+    try {
+      doubleHistogram = DoubleHistogram.decodeFromCompressedByteBuffer(buf, Long.MAX_VALUE);
+      doubleHistogram.recordValue(selector.get());
+      mutationBuffer.position(position);
+      doubleHistogram.encodeIntoCompressedByteBuffer(buf, Deflater.BEST_SPEED);
+    } catch (DataFormatException e) {
+      e.printStackTrace();
+    }
   }
 
   @Override
@@ -79,7 +72,12 @@ public class HdrHistogramBufferAggregator implements BufferAggregator
   {
     ByteBuffer mutationBuffer = buf.duplicate();
     mutationBuffer.position(position);
-    return ApproximateHistogram.fromBytes(mutationBuffer);
+    try {
+      return DoubleHistogram.decodeFromCompressedByteBuffer(buf, Long.MAX_VALUE);
+    } catch (DataFormatException e) {
+      e.printStackTrace();
+      return null;
+    }
   }
 
   @Override

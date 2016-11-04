@@ -21,56 +21,41 @@ package io.druid.query.aggregation.histogram.hdr;
 
 
 import io.druid.query.aggregation.Aggregator;
-import io.druid.query.aggregation.histogram.ApproximateHistogram;
 import io.druid.segment.ObjectColumnSelector;
+import org.HdrHistogram.DoubleHistogram;
 
 public class HdrHistogramFoldingAggregator implements Aggregator
 {
-  private final ObjectColumnSelector<ApproximateHistogram> selector;
-  private final int resolution;
-  private final float lowerLimit;
-  private final float upperLimit;
+  private final ObjectColumnSelector<DoubleHistogram> selector;
+  private final long highestToLowestValueRatio;
+  private final int numberOfSignificantValueDigits;
 
-  private ApproximateHistogram histogram;
-  private float[] tmpBufferP;
-  private long[] tmpBufferB;
+  private DoubleHistogram histogram;
 
   public HdrHistogramFoldingAggregator(
-      ObjectColumnSelector<ApproximateHistogram> selector,
-      int resolution,
-      float lowerLimit,
-      float upperLimit
-  )
+          ObjectColumnSelector<DoubleHistogram> selector,
+          long highestToLowestValueRatio, int numberOfSignificantValueDigits)
   {
     this.selector = selector;
-    this.resolution = resolution;
-    this.lowerLimit = lowerLimit;
-    this.upperLimit = upperLimit;
-    this.histogram = new ApproximateHistogram(resolution, lowerLimit, upperLimit);
-
-    tmpBufferP = new float[resolution];
-    tmpBufferB = new long[resolution];
+    this.highestToLowestValueRatio = highestToLowestValueRatio;
+    this.numberOfSignificantValueDigits = numberOfSignificantValueDigits;
+    this.histogram = new DoubleHistogram(highestToLowestValueRatio, numberOfSignificantValueDigits);
   }
 
   @Override
   public void aggregate()
   {
-    ApproximateHistogram h = selector.get();
-    if (h == null) {
+    final DoubleHistogram rhs = selector.get();
+    if (rhs == null) {
       return;
     }
-
-    if (h.binCount() + histogram.binCount() <= tmpBufferB.length) {
-      histogram.foldFast(h, tmpBufferP, tmpBufferB);
-    } else {
-      histogram.foldFast(h);
-    }
+    histogram.add(rhs);
   }
 
   @Override
   public void reset()
   {
-    this.histogram = new ApproximateHistogram(resolution, lowerLimit, upperLimit);
+    this.histogram = new DoubleHistogram(highestToLowestValueRatio, numberOfSignificantValueDigits);
   }
 
   @Override
@@ -82,13 +67,13 @@ public class HdrHistogramFoldingAggregator implements Aggregator
   @Override
   public float getFloat()
   {
-    throw new UnsupportedOperationException("ApproximateHistogramFoldingAggregator does not support getFloat()");
+    throw new UnsupportedOperationException("HdrHistogramFoldingAggregator does not support getFloat()");
   }
 
   @Override
   public long getLong()
   {
-    throw new UnsupportedOperationException("ApproximateHistogramFoldingAggregator does not support getLong()");
+    throw new UnsupportedOperationException("HdrHistogramFoldingAggregator does not support getLong()");
   }
 
   @Override

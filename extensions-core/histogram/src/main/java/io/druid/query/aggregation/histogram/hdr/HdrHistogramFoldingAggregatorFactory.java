@@ -29,17 +29,15 @@ import io.druid.java.util.common.StringUtils;
 import io.druid.query.aggregation.Aggregator;
 import io.druid.query.aggregation.AggregatorFactory;
 import io.druid.query.aggregation.BufferAggregator;
-import io.druid.query.aggregation.histogram.ApproximateHistogram;
 import io.druid.query.aggregation.histogram.ApproximateHistogramAggregatorFactory;
-import io.druid.query.aggregation.histogram.ApproximateHistogramFoldingAggregator;
-import io.druid.query.aggregation.histogram.ApproximateHistogramFoldingBufferAggregator;
 import io.druid.segment.ColumnSelectorFactory;
 import io.druid.segment.ObjectColumnSelector;
+import org.HdrHistogram.DoubleHistogram;
 
 import java.nio.ByteBuffer;
 
 @JsonTypeName("hdrHistogramFold")
-public class HdrHistogramFoldingAggregatorFactory extends ApproximateHistogramAggregatorFactory
+public class HdrHistogramFoldingAggregatorFactory extends HdrHistogramAggregatorFactory
 {
   private static final byte CACHE_TYPE_ID = 13;
 
@@ -47,13 +45,11 @@ public class HdrHistogramFoldingAggregatorFactory extends ApproximateHistogramAg
   public HdrHistogramFoldingAggregatorFactory(
       @JsonProperty("name") String name,
       @JsonProperty("fieldName") String fieldName,
-      @JsonProperty("resolution") Integer resolution,
-      @JsonProperty("numBuckets") Integer numBuckets,
-      @JsonProperty("lowerLimit") Float lowerLimit,
-      @JsonProperty("upperLimit") Float upperLimit
+      @JsonProperty("highestToLowestValueRatio") Long highestToLowestValueRatio,
+      @JsonProperty("numberOfSignificantValueDigits") Integer numberOfSignificantValueDigits
   )
   {
-    super(name, fieldName, resolution, numBuckets, lowerLimit, upperLimit);
+    super(name, fieldName, highestToLowestValueRatio, numberOfSignificantValueDigits, numBuckets);
   }
 
   @Override
@@ -64,34 +60,33 @@ public class HdrHistogramFoldingAggregatorFactory extends ApproximateHistogramAg
     if (selector == null) {
       // gracefully handle undefined metrics
 
-      selector = new ObjectColumnSelector<ApproximateHistogram>()
+      selector = new ObjectColumnSelector<DoubleHistogram>()
       {
         @Override
-        public Class<ApproximateHistogram> classOfObject()
+        public Class<DoubleHistogram> classOfObject()
         {
-          return ApproximateHistogram.class;
+          return DoubleHistogram.class;
         }
 
         @Override
-        public ApproximateHistogram get()
+        public DoubleHistogram get()
         {
-          return new ApproximateHistogram(0);
+          return new DoubleHistogram(highestToLowestValueRatio, numberOfSignificantValueDigits);
         }
       };
     }
 
     final Class cls = selector.classOfObject();
-    if (cls.equals(Object.class) || ApproximateHistogram.class.isAssignableFrom(cls)) {
-      return new ApproximateHistogramFoldingAggregator(
+    if (cls.equals(Object.class) || DoubleHistogram.class.isAssignableFrom(cls)) {
+      return new HdrHistogramFoldingAggregator(
           selector,
-          resolution,
-          lowerLimit,
-          upperLimit
+          highestToLowestValueRatio,
+          numberOfSignificantValueDigits
       );
     }
 
     throw new IAE(
-        "Incompatible type for metric[%s], expected a ApproximateHistogram, got a %s",
+        "Incompatible type for metric[%s], expected a DoubleHistogram, got a %s",
         fieldName,
         cls
     );
@@ -105,29 +100,29 @@ public class HdrHistogramFoldingAggregatorFactory extends ApproximateHistogramAg
     if (selector == null) {
       // gracefully handle undefined metrics
 
-      selector = new ObjectColumnSelector<ApproximateHistogram>()
+      selector = new ObjectColumnSelector<DoubleHistogram>()
       {
         @Override
-        public Class<ApproximateHistogram> classOfObject()
+        public Class<DoubleHistogram> classOfObject()
         {
-          return ApproximateHistogram.class;
+          return DoubleHistogram.class;
         }
 
         @Override
-        public ApproximateHistogram get()
+        public DoubleHistogram get()
         {
-          return new ApproximateHistogram(0);
+          return new DoubleHistogram(highestToLowestValueRatio, numberOfSignificantValueDigits);
         }
       };
     }
 
     final Class cls = selector.classOfObject();
-    if (cls.equals(Object.class) || ApproximateHistogram.class.isAssignableFrom(cls)) {
-      return new ApproximateHistogramFoldingBufferAggregator(selector, resolution, lowerLimit, upperLimit);
+    if (cls.equals(Object.class) || DoubleHistogram.class.isAssignableFrom(cls)) {
+      return new HdrHistogramFoldingBufferAggregator(selector, highestToLowestValueRatio, numberOfSignificantValueDigits);
     }
 
     throw new IAE(
-        "Incompatible type for metric[%s], expected a ApproximateHistogram, got a %s",
+        "Incompatible type for metric[%s], expected a DoubleHistogram, got a %s",
         fieldName,
         cls
     );
@@ -136,7 +131,8 @@ public class HdrHistogramFoldingAggregatorFactory extends ApproximateHistogramAg
   @Override
   public AggregatorFactory getCombiningFactory()
   {
-    return new HdrHistogramFoldingAggregatorFactory(name, name, resolution, numBuckets, lowerLimit, upperLimit);
+    return new HdrHistogramFoldingAggregatorFactory(name, fieldName, highestToLowestValueRatio,
+            numberOfSignificantValueDigits);
   }
 
   @Override

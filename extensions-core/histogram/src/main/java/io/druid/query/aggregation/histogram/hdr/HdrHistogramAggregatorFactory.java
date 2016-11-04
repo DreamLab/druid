@@ -31,18 +31,14 @@ import io.druid.query.aggregation.Aggregator;
 import io.druid.query.aggregation.AggregatorFactory;
 import io.druid.query.aggregation.AggregatorFactoryNotMergeableException;
 import io.druid.query.aggregation.BufferAggregator;
-import io.druid.query.aggregation.histogram.ApproximateHistogram;
-import io.druid.query.aggregation.histogram.HdrHistogram;
-import io.druid.query.aggregation.histogram.HdrHistogramAggregator;
-import io.druid.query.aggregation.histogram.HdrHistogramBufferAggregator;
-import io.druid.query.aggregation.histogram.HdrHistogramFoldingAggregatorFactory;
+import io.druid.query.aggregation.histogram.Histogram;
 import io.druid.segment.ColumnSelectorFactory;
+import org.HdrHistogram.DoubleHistogram;
+import org.HdrHistogram.DoubleHistogramIterationValue;
 import org.apache.commons.codec.binary.Base64;
 
 import java.nio.ByteBuffer;
-import java.util.Arrays;
-import java.util.Comparator;
-import java.util.List;
+import java.util.*;
 
 @JsonTypeName("hdrHistogram")
 public class HdrHistogramAggregatorFactory extends AggregatorFactory
@@ -51,44 +47,34 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
 
   protected final String name;
   protected final String fieldName;
-
-  protected final int resolution;
-  protected final int numBuckets;
-
-  protected final float lowerLimit;
-  protected final float upperLimit;
+  protected final Long highestToLowestValueRatio;
+  protected final Integer numberOfSignificantValueDigits;
+  protected final Integer numBuckets;
 
   @JsonCreator
   public HdrHistogramAggregatorFactory(
-      @JsonProperty("name") String name,
-      @JsonProperty("fieldName") String fieldName,
-      @JsonProperty("resolution") Integer resolution,
-      @JsonProperty("numBuckets") Integer numBuckets,
-      @JsonProperty("lowerLimit") Float lowerLimit,
-      @JsonProperty("upperLimit") Float upperLimit
-
-  )
+          @JsonProperty("name") String name,
+          @JsonProperty("fieldName") String fieldName,
+          @JsonProperty("highestToLowestValueRatio") Long highestToLowestValueRatio,
+          @JsonProperty("numberOfSignificantValueDigits") Integer numberOfSignificantValueDigits,
+          @JsonProperty("numBuckets") Integer numBuckets)
   {
     this.name = name;
     this.fieldName = fieldName;
-    this.resolution = resolution == null ? ApproximateHistogram.DEFAULT_HISTOGRAM_SIZE : resolution;
-    this.numBuckets = numBuckets == null ? ApproximateHistogram.DEFAULT_BUCKET_SIZE : numBuckets;
-    this.lowerLimit = lowerLimit == null ? Float.NEGATIVE_INFINITY : lowerLimit;
-    this.upperLimit = upperLimit == null ? Float.POSITIVE_INFINITY : upperLimit;
-
-    Preconditions.checkArgument(this.resolution > 0, "resolution must be greater than 1");
-    Preconditions.checkArgument(this.numBuckets > 0, "numBuckets must be greater than 1");
-    Preconditions.checkArgument(this.upperLimit > this.lowerLimit, "upperLimit must be greater than lowerLimit");
+    this.numBuckets = numBuckets;
+    this.highestToLowestValueRatio = highestToLowestValueRatio == null ? 2 : highestToLowestValueRatio;
+    this.numberOfSignificantValueDigits = numberOfSignificantValueDigits == null ? 2 : numberOfSignificantValueDigits;
+    Preconditions.checkArgument(this.numberOfSignificantValueDigits >= 0 && this.numberOfSignificantValueDigits <= 5,
+            "numberOfSignificantValueDigits must be between 0 and 5");
+    Preconditions.checkArgument(this.highestToLowestValueRatio > 0, "highestToLowestValueRatio must be greater than 0");
+    Preconditions.checkArgument(this.numBuckets > 0, "numBuckets must be greater than 0");
   }
 
   @Override
   public Aggregator factorize(ColumnSelectorFactory metricFactory)
   {
     return new HdrHistogramAggregator(
-            highestToLowestValueRatio, numberOfSignificantValueDigits, metricFactory.makeFloatColumnSelector(fieldName),
-        resolution,
-        lowerLimit,
-        upperLimit
+            highestToLowestValueRatio, numberOfSignificantValueDigits, metricFactory.makeFloatColumnSelector(fieldName)
     );
   }
 
@@ -96,10 +82,7 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
   public BufferAggregator factorizeBuffered(ColumnSelectorFactory metricFactory)
   {
     return new HdrHistogramBufferAggregator(
-        metricFactory.makeFloatColumnSelector(fieldName),
-        resolution,
-        lowerLimit,
-        upperLimit
+        highestToLowestValueRatio, numberOfSignificantValueDigits, metricFactory.makeFloatColumnSelector(fieldName)
     );
   }
 
@@ -118,7 +101,7 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
   @Override
   public AggregatorFactory getCombiningFactory()
   {
-    return new HdrHistogramFoldingAggregatorFactory(name, name, resolution, numBuckets, lowerLimit, upperLimit);
+    return new HdrHistogramFoldingAggregatorFactory(name, fieldName, highestToLowestValueRatio, numberOfSignificantValueDigits);
   }
 
   @Override
@@ -129,11 +112,9 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
 
       return new HdrHistogramFoldingAggregatorFactory(
           name,
-          name,
-          Math.max(resolution, castedOther.resolution),
-          numBuckets,
-          Math.min(lowerLimit, castedOther.lowerLimit),
-          Math.max(upperLimit, castedOther.upperLimit)
+          fieldName,
+          Math.max(highestToLowestValueRatio, castedOther.highestToLowestValueRatio),
+          Math.max(numberOfSignificantValueDigits, castedOther.numberOfSignificantValueDigits)
       );
 
     } else {
@@ -146,13 +127,11 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
   {
     return Arrays.<AggregatorFactory>asList(
         new HdrHistogramAggregatorFactory(
+            name,
             fieldName,
-            fieldName,
-            resolution,
-            numBuckets,
-            lowerLimit,
-            upperLimit
-        )
+            highestToLowestValueRatio,
+            numberOfSignificantValueDigits,
+                numBuckets)
     );
   }
 
@@ -186,7 +165,20 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
   @Override
   public Object finalizeComputation(Object object)
   {
-    return ((HdrHistogram) object).toHistogram(numBuckets);
+    final DoubleHistogram histogram = (DoubleHistogram) object;
+    final double maxValue = histogram.getMaxValue();
+    final double minValue = histogram.getMinValue();
+    final DoubleHistogram.LinearBucketValues linearIterator = histogram.linearBucketValues((maxValue - minValue) / numBuckets);
+    final List<Float> breaks = new ArrayList<>();
+    final List<Double> counts = new ArrayList<>();
+    for (DoubleHistogramIterationValue value : linearIterator) {
+      final long currentCount = value.getCountAtValueIteratedTo();
+      final double currentBreak = value.getValueIteratedTo();
+      breaks.add((float) currentBreak);
+      counts.add((double) currentCount);
+    }
+    //TODO: continue
+    return null;
   }
 
   @JsonProperty
@@ -203,28 +195,15 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
   }
 
   @JsonProperty
-  public int getResolution()
-  {
-    return resolution;
+  public Integer getNumberOfSignificantValueDigits() {
+    return numberOfSignificantValueDigits;
   }
 
   @JsonProperty
-  public float getLowerLimit()
-  {
-    return lowerLimit;
+  public Long getHighestToLowestValueRatio() {
+    return highestToLowestValueRatio;
   }
 
-  @JsonProperty
-  public float getUpperLimit()
-  {
-    return upperLimit;
-  }
-
-  @JsonProperty
-  public int getNumBuckets()
-  {
-    return numBuckets;
-  }
 
   @Override
   public List<String> requiredFields()
@@ -239,10 +218,8 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
     return ByteBuffer.allocate(1 + fieldNameBytes.length + Ints.BYTES * 2 + Floats.BYTES * 2)
                      .put(CACHE_TYPE_ID)
                      .put(fieldNameBytes)
-                     .putInt(resolution)
-                     .putInt(numBuckets)
-                     .putFloat(lowerLimit)
-                     .putFloat(upperLimit).array();
+                     .putLong(highestToLowestValueRatio)
+                     .putInt(numberOfSignificantValueDigits).array();
   }
 
   @Override
@@ -254,7 +231,7 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
   @Override
   public int getMaxIntermediateSize()
   {
-    return new HdrHistogram(resolution).getMaxStorageSize();
+    return new DoubleHistogram(highestToLowestValueRatio, numberOfSignificantValueDigits).getNeededByteBufferCapacity();
   }
 
   @Override
@@ -269,21 +246,17 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
 
     HdrHistogramAggregatorFactory that = (HdrHistogramAggregatorFactory) o;
 
-    if (Float.compare(that.lowerLimit, lowerLimit) != 0) {
+    if (!Objects.equals(numberOfSignificantValueDigits, that.numberOfSignificantValueDigits)) {
       return false;
     }
-    if (numBuckets != that.numBuckets) {
+    if (!Objects.equals(highestToLowestValueRatio, that.highestToLowestValueRatio)) {
       return false;
     }
-    if (resolution != that.resolution) {
-      return false;
-    }
-    if (Float.compare(that.upperLimit, upperLimit) != 0) {
-      return false;
-    }
+
     if (fieldName != null ? !fieldName.equals(that.fieldName) : that.fieldName != null) {
       return false;
     }
+
     if (name != null ? !name.equals(that.name) : that.name != null) {
       return false;
     }
@@ -296,10 +269,8 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
   {
     int result = name != null ? name.hashCode() : 0;
     result = 31 * result + (fieldName != null ? fieldName.hashCode() : 0);
-    result = 31 * result + resolution;
-    result = 31 * result + numBuckets;
-    result = 31 * result + (lowerLimit != +0.0f ? Float.floatToIntBits(lowerLimit) : 0);
-    result = 31 * result + (upperLimit != +0.0f ? Float.floatToIntBits(upperLimit) : 0);
+    result = 31 * result + highestToLowestValueRatio.hashCode();
+    result = 31 * result + numberOfSignificantValueDigits.hashCode();
     return result;
   }
 
@@ -309,10 +280,8 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
     return "HdrHistogramAggregatorFactory{" +
            "name='" + name + '\'' +
            ", fieldName='" + fieldName + '\'' +
-           ", resolution=" + resolution +
-           ", numBuckets=" + numBuckets +
-           ", lowerLimit=" + lowerLimit +
-           ", upperLimit=" + upperLimit +
+           ", highestToLowestValueRatio=" + highestToLowestValueRatio +
+           ", numberOfSignificantValueDigits=" + numberOfSignificantValueDigits +
            '}';
   }
 }
