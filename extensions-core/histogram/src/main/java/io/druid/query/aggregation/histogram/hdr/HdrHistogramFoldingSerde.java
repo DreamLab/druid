@@ -21,36 +21,37 @@ package io.druid.query.aggregation.histogram.hdr;
 
 import com.google.common.collect.Ordering;
 import io.druid.data.input.InputRow;
-import io.druid.query.aggregation.histogram.ApproximateHistogram;
-import io.druid.query.aggregation.histogram.ApproximateHistogramAggregator;
 import io.druid.segment.column.ColumnBuilder;
 import io.druid.segment.data.GenericIndexed;
 import io.druid.segment.data.ObjectStrategy;
 import io.druid.segment.serde.ComplexColumnPartSupplier;
 import io.druid.segment.serde.ComplexMetricExtractor;
 import io.druid.segment.serde.ComplexMetricSerde;
+import org.HdrHistogram.DoubleHistogram;
 
 import java.nio.ByteBuffer;
 import java.util.Iterator;
 import java.util.List;
 
+import static io.druid.query.aggregation.histogram.hdr.HdrHistogramAggregatorFactory.*;
+
 public class HdrHistogramFoldingSerde extends ComplexMetricSerde
 {
-  private static Ordering<ApproximateHistogram> comparator = new Ordering<ApproximateHistogram>()
+  private static Ordering<DoubleHistogram> comparator = new Ordering<DoubleHistogram>()
   {
     @Override
     public int compare(
-        ApproximateHistogram arg1, ApproximateHistogram arg2
+        DoubleHistogram rhs, DoubleHistogram lhs
     )
     {
-      return ApproximateHistogramAggregator.COMPARATOR.compare(arg1, arg2);
+      return HdrHistogramAggregator.COMPARATOR.compare(rhs, lhs);
     }
   }.nullsFirst();
 
   @Override
   public String getTypeName()
   {
-    return "approximateHistogram";
+    return "hdrHistogram";
   }
 
   @Override
@@ -59,32 +60,32 @@ public class HdrHistogramFoldingSerde extends ComplexMetricSerde
     return new ComplexMetricExtractor()
     {
       @Override
-      public Class<ApproximateHistogram> extractedClass()
+      public Class<DoubleHistogram> extractedClass()
       {
-        return ApproximateHistogram.class;
+        return DoubleHistogram.class;
       }
 
       @Override
-      public ApproximateHistogram extractValue(InputRow inputRow, String metricName)
+      public DoubleHistogram extractValue(InputRow inputRow, String metricName)
       {
         Object rawValue = inputRow.getRaw(metricName);
 
-        if (rawValue instanceof ApproximateHistogram) {
-          return (ApproximateHistogram) rawValue;
+        if (rawValue instanceof DoubleHistogram) {
+          return (DoubleHistogram) rawValue;
         } else {
           List<String> dimValues = inputRow.getDimension(metricName);
           if (dimValues != null && dimValues.size() > 0) {
             Iterator<String> values = dimValues.iterator();
 
-            ApproximateHistogram h = new ApproximateHistogram();
+            final DoubleHistogram h = new DoubleHistogram(2);
 
             while (values.hasNext()) {
               float value = Float.parseFloat(values.next());
-              h.offer(value);
+              h.recordValue(value);
             }
             return h;
           } else {
-            return new ApproximateHistogram(0);
+            return new DoubleHistogram(2);
           }
         }
       }
@@ -102,35 +103,38 @@ public class HdrHistogramFoldingSerde extends ComplexMetricSerde
 
   public ObjectStrategy getObjectStrategy()
   {
-    return new ObjectStrategy<ApproximateHistogram>()
+    return new ObjectStrategy<DoubleHistogram>()
     {
       @Override
-      public Class<? extends ApproximateHistogram> getClazz()
+      public Class<? extends DoubleHistogram> getClazz()
       {
-        return ApproximateHistogram.class;
+        return DoubleHistogram.class;
       }
 
       @Override
-      public ApproximateHistogram fromByteBuffer(ByteBuffer buffer, int numBytes)
+      public DoubleHistogram fromByteBuffer(ByteBuffer buffer, int numBytes)
       {
         final ByteBuffer readOnlyBuffer = buffer.asReadOnlyBuffer();
         readOnlyBuffer.limit(readOnlyBuffer.position() + numBytes);
-        return ApproximateHistogram.fromBytes(readOnlyBuffer);
+        return DoubleHistogram.decodeFromByteBuffer(readOnlyBuffer, MIN_BAR_FOR_HIGHEST_TO_LOWEST_VALUE_RATIO);
       }
 
       @Override
-      public byte[] toBytes(ApproximateHistogram h)
+      public byte[] toBytes(DoubleHistogram h)
       {
         if (h == null) {
           return new byte[]{};
         }
-        return h.toBytes();
+        final ByteBuffer byteBuffer = ByteBuffer.allocate(h.getNeededByteBufferCapacity());
+        byteBuffer.clear();
+        h.encodeIntoByteBuffer(byteBuffer);
+        return byteBuffer.array();
       }
 
       @Override
-      public int compare(ApproximateHistogram o1, ApproximateHistogram o2)
+      public int compare(DoubleHistogram lhs, DoubleHistogram rhs)
       {
-        return comparator.compare(o1, o2);
+        return comparator.compare(lhs, rhs);
       }
     };
   }

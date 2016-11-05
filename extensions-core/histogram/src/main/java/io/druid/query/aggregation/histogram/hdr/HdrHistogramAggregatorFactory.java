@@ -44,6 +44,13 @@ import java.util.*;
 @JsonTypeName("hdrHistogram")
 public class HdrHistogramAggregatorFactory extends AggregatorFactory
 {
+  /**
+   * Set minimum highest trackable value of deserialized histograms to a number of milliseconds in an hour.
+   * This value is purely an internal hint for HdrHistogram and DOES NOT cap the maximum recordable value for such
+   * histogram.
+   */
+  public static final long MIN_BAR_FOR_HIGHEST_TO_LOWEST_VALUE_RATIO = 1000 * 60 * 60;
+
   private static final byte CACHE_TYPE_ID = 12;
 
   protected final String name;
@@ -142,13 +149,13 @@ public class HdrHistogramAggregatorFactory extends AggregatorFactory
   {
     if (object instanceof byte[]) {
       final ByteBuffer byteBuffer = ByteBuffer.wrap((byte[]) object);
-      return DoubleHistogram.decodeFromByteBuffer(byteBuffer, Long.MAX_VALUE);
+      return DoubleHistogram.decodeFromByteBuffer(byteBuffer, MIN_BAR_FOR_HIGHEST_TO_LOWEST_VALUE_RATIO);
     } else if (object instanceof ByteBuffer) {
-      return DoubleHistogram.decodeFromByteBuffer((ByteBuffer) object, Long.MAX_VALUE);
+      return DoubleHistogram.decodeFromByteBuffer((ByteBuffer) object, MIN_BAR_FOR_HIGHEST_TO_LOWEST_VALUE_RATIO);
     } else if (object instanceof String) {
       final byte[] bytes = Base64.decodeBase64(StringUtils.toUtf8((String) object));
       final ByteBuffer byteBuffer = ByteBuffer.wrap(bytes);
-      return DoubleHistogram.decodeFromByteBuffer(byteBuffer, Long.MAX_VALUE);
+      return DoubleHistogram.decodeFromByteBuffer(byteBuffer, MIN_BAR_FOR_HIGHEST_TO_LOWEST_VALUE_RATIO);
     } else {
       return object;
     }

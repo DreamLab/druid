@@ -25,6 +25,8 @@ import org.HdrHistogram.DoubleHistogram;
 
 import java.nio.ByteBuffer;
 
+import static io.druid.query.aggregation.histogram.hdr.HdrHistogramAggregatorFactory.*;
+
 public class HdrHistogramBufferAggregator implements BufferAggregator
 {
   private final FloatColumnSelector selector;
@@ -53,7 +55,8 @@ public class HdrHistogramBufferAggregator implements BufferAggregator
   {
     ByteBuffer mutationBuffer = buf.duplicate();
     mutationBuffer.position(position);
-    final DoubleHistogram doubleHistogram = DoubleHistogram.decodeFromByteBuffer(buf, Long.MAX_VALUE);
+    final DoubleHistogram doubleHistogram = DoubleHistogram.decodeFromByteBuffer(buf,
+            MIN_BAR_FOR_HIGHEST_TO_LOWEST_VALUE_RATIO);
     doubleHistogram.recordValue(selector.get());
     mutationBuffer.position(position);
     doubleHistogram.encodeIntoByteBuffer(buf);
@@ -64,7 +67,7 @@ public class HdrHistogramBufferAggregator implements BufferAggregator
   {
     ByteBuffer mutationBuffer = buf.duplicate();
     mutationBuffer.position(position);
-    return DoubleHistogram.decodeFromByteBuffer(buf, Long.MAX_VALUE);
+    return DoubleHistogram.decodeFromByteBuffer(buf, MIN_BAR_FOR_HIGHEST_TO_LOWEST_VALUE_RATIO);
   }
 
   @Override
