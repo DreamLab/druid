@@ -24,8 +24,6 @@ import io.druid.segment.ObjectColumnSelector;
 import org.HdrHistogram.DoubleHistogram;
 
 import java.nio.ByteBuffer;
-import java.util.zip.DataFormatException;
-import java.util.zip.Deflater;
 
 public class HdrHistogramFoldingBufferAggregator implements BufferAggregator
 {
@@ -48,7 +46,7 @@ public class HdrHistogramFoldingBufferAggregator implements BufferAggregator
     final ByteBuffer mutationBuffer = buf.duplicate();
     mutationBuffer.position(position);
     final DoubleHistogram initialHistogram = new DoubleHistogram(highestToLowestValueRatio, numberOfSignificantValueDigits);
-    initialHistogram.encodeIntoCompressedByteBuffer(mutationBuffer, Deflater.BEST_SPEED);
+    initialHistogram.encodeIntoByteBuffer(mutationBuffer);
   }
 
   @Override
@@ -56,16 +54,10 @@ public class HdrHistogramFoldingBufferAggregator implements BufferAggregator
   {
     final ByteBuffer mutationBuffer = buf.duplicate();
     mutationBuffer.position(position);
-
-    final DoubleHistogram doubleHistogram;
-    try {
-      doubleHistogram = DoubleHistogram.decodeFromCompressedByteBuffer(buf, Long.MAX_VALUE);
-      doubleHistogram.add(selector.get());
-      mutationBuffer.position(position);
-      doubleHistogram.encodeIntoCompressedByteBuffer(buf, Deflater.BEST_SPEED);
-    } catch (DataFormatException e) {
-      e.printStackTrace();
-    }
+    final DoubleHistogram doubleHistogram = DoubleHistogram.decodeFromByteBuffer(buf, Long.MAX_VALUE);
+    doubleHistogram.add(selector.get());
+    mutationBuffer.position(position);
+    doubleHistogram.encodeIntoByteBuffer(buf);
   }
 
   @Override
@@ -73,14 +65,7 @@ public class HdrHistogramFoldingBufferAggregator implements BufferAggregator
   {
     ByteBuffer mutationBuffer = buf.asReadOnlyBuffer();
     mutationBuffer.position(position);
-    final DoubleHistogram doubleHistogram;
-    try {
-      doubleHistogram = DoubleHistogram.decodeFromCompressedByteBuffer(buf, Long.MAX_VALUE);
-      return doubleHistogram;
-    } catch (DataFormatException e) {
-      e.printStackTrace();
-      return null;
-    }
+    return DoubleHistogram.decodeFromByteBuffer(buf, Long.MAX_VALUE);
   }
 
   @Override

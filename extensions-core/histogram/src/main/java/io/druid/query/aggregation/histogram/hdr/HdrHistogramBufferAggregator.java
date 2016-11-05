@@ -24,8 +24,6 @@ import io.druid.segment.FloatColumnSelector;
 import org.HdrHistogram.DoubleHistogram;
 
 import java.nio.ByteBuffer;
-import java.util.zip.DataFormatException;
-import java.util.zip.Deflater;
 
 public class HdrHistogramBufferAggregator implements BufferAggregator
 {
@@ -47,7 +45,7 @@ public class HdrHistogramBufferAggregator implements BufferAggregator
     final ByteBuffer mutationBuffer = buf.duplicate();
     mutationBuffer.position(position);
     final DoubleHistogram initialHistogram = new DoubleHistogram(highestToLowestValueRatio, numberOfSignificantValueDigits);
-    initialHistogram.encodeIntoCompressedByteBuffer(mutationBuffer, Deflater.BEST_SPEED);
+    initialHistogram.encodeIntoByteBuffer(mutationBuffer);
   }
 
   @Override
@@ -55,16 +53,10 @@ public class HdrHistogramBufferAggregator implements BufferAggregator
   {
     ByteBuffer mutationBuffer = buf.duplicate();
     mutationBuffer.position(position);
-
-    final DoubleHistogram doubleHistogram;
-    try {
-      doubleHistogram = DoubleHistogram.decodeFromCompressedByteBuffer(buf, Long.MAX_VALUE);
-      doubleHistogram.recordValue(selector.get());
-      mutationBuffer.position(position);
-      doubleHistogram.encodeIntoCompressedByteBuffer(buf, Deflater.BEST_SPEED);
-    } catch (DataFormatException e) {
-      e.printStackTrace();
-    }
+    final DoubleHistogram doubleHistogram = DoubleHistogram.decodeFromByteBuffer(buf, Long.MAX_VALUE);
+    doubleHistogram.recordValue(selector.get());
+    mutationBuffer.position(position);
+    doubleHistogram.encodeIntoByteBuffer(buf);
   }
 
   @Override
@@ -72,25 +64,20 @@ public class HdrHistogramBufferAggregator implements BufferAggregator
   {
     ByteBuffer mutationBuffer = buf.duplicate();
     mutationBuffer.position(position);
-    try {
-      return DoubleHistogram.decodeFromCompressedByteBuffer(buf, Long.MAX_VALUE);
-    } catch (DataFormatException e) {
-      e.printStackTrace();
-      return null;
-    }
+    return DoubleHistogram.decodeFromByteBuffer(buf, Long.MAX_VALUE);
   }
 
   @Override
   public float getFloat(ByteBuffer buf, int position)
   {
-    throw new UnsupportedOperationException("ApproximateHistogramBufferAggregator does not support getFloat()");
+    throw new UnsupportedOperationException("HdrHistogramBufferAggregator does not support getFloat()");
   }
 
 
   @Override
   public long getLong(ByteBuffer buf, int position)
   {
-    throw new UnsupportedOperationException("ApproximateHistogramBufferAggregator does not support getLong()");
+    throw new UnsupportedOperationException("HdrHistogramBufferAggregator does not support getLong()");
   }
 
   @Override
